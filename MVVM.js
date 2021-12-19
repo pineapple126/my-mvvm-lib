@@ -1,8 +1,71 @@
 /**
+ * Watcher & Dep 模块：实现发布订阅功能
+ * 
+ * 思路：将属性视为被观察者，模板使用视为观察者，实现数据与视图的绑定
+ * 
+ * 在每个属性的 getter 中收集依赖，在 setter 中通知依赖
+ * Dep 类负责存放依赖，Watcher 类负责数据变更后的处理逻辑
+ */
+
+/**
+ * 依赖类
+ * 
+ * 收集每个属性的 watcher，当属性值发生变化时，通知所有 watcher
+ */
+class Dep {
+  constructor() {
+    // 存放所有的 watcher
+    this.subs = [];
+  }
+
+  // 订阅
+  addSub(watcher) {
+    this.subs.push(watcher);
+  }
+
+  // 发布
+  notify() {
+    this.subs.forEach((watcher) => { 
+      watcher.update()
+    });
+  }
+}
+
+/**
+ * 观察者类
+ */
+class Watcher {
+  constructor(vm, exp, cb) {
+    this.vm = vm;
+    this.exp = exp;
+    this.cb = cb;
+    // 默认先存放一个老值
+    this.oldValue = this.get();
+  }
+
+  // 获取当前 Watcher 的老值
+  get() {
+    // 通过触发依赖属性的 getter，实现 watcher 和数据的关联
+    Dep.target = this;
+    const value = CompileUtil.getVal(this.vm, this.exp);
+    Dep.target = null;
+    return  value;
+  }
+
+  // 当数据发生变化后，会调用观察者的 update 方法，来更新当前 Watcher 的值
+  update() {
+    const newVal = CompileUtil.getVal(this.vm, this.exp);
+    if (newVal !== this.oldValue) {
+      this.cb(newVal);
+    }
+  }
+}
+
+/**
  * Observer 模块：实现数据劫持
  * 
  * 使用 Object.defineProperty 重写 data 内定义的属性
- * 思路：递归遍历并依次重写 data 内的属性
+ * 思路：递归遍历并依次重写 data 内的属性，在 getter 中收集依赖，在 setter 中通知依赖进行更新
  */ 
 
  class Observer {
@@ -23,16 +86,22 @@
   defineReactive(obj, key, value) {
     // 递归遍历并重写子对象中的属性
     this.observe(value);
+    // 给每一个属性都加上一个具有发布订阅功能的被观察者对象
+    const dep = new Dep();
     Object.defineProperty(obj, key, {
       get() {
+        // 创建 watcher 时，会触发当前属性的 getter，实现依赖收集
+        Dep.target && dep.addSub(Dep.target);
         return value;
       },
 
       set: (newVal) => {
         if (newVal !== value) {
-          // 重写新对象的属性
+          // 重写当前属性新对象类型值的属性
           this.observe(newVal);
           value = newVal;
+          // 属性值变更时，通知当前属性下的所有 watcher
+          dep.notify();
         }
       }
     })
@@ -54,13 +123,13 @@ class Compiler {
   constructor(el, vm) {
     // 获取模板元素  
     // 判断传递进来的 el 是元素节点还是字符串
-    this.$el = this.isElementNode(el) ? el : document.querySelector(el);
-    this.$vm = vm;
+    this.el = this.isElementNode(el) ? el : document.querySelector(el);
+    this.vm = vm;
 
     // todo 将模板元素放入内存中 fragment  为啥这样做？
 
     // 执行编译函数
-    this.compile(this.$el);
+    this.compile(this.el);
   }
 
   /**
@@ -102,7 +171,7 @@ class Compiler {
         const [, directive] = name.split('-');
         
         // 调用不同的指令规则来处理
-        CompileUtil[directive](node, exp, this.$vm);
+        CompileUtil[directive](node, exp, this.vm);
       }
     })
   }
@@ -117,7 +186,7 @@ class Compiler {
 
     // 判断并处理变量名称
     if (/\{\{(.+?)\}\}/.test(content)) {
-      CompileUtil['text'](node, content, this.$vm);
+      CompileUtil['text'](node, content, this.vm);
     }
   }
 
@@ -147,18 +216,34 @@ const CompileUtil = {
     }, vm.$data);
   },
 
+  // 遍历表达式，获取最新的完整内容
+  getContentValue(vm, exp) {
+    return exp.replace(/\{\{(.+?)\}\}/g, (...args) => {
+      return this.getVal(vm, args[1]);
+    });
+  },
+
   // node 节点，exp 表达式，vm 当前实例
   model(node,exp, vm) {
     // 给输入框赋予 value 属性
     const fn = this.updater['modelUpdater'];
+    // 给输入框设置观察者对象，当数据更新后会触发该方法，更新输入框的值
+    new Watcher(vm, exp, (newVal) => {
+      fn(node, newVal);
+    });
     const value = this.getVal(vm, exp);
     fn(node, value);
   },
 
   // 处理文本节点
   text(node, exp, vm) {
-    let fn = this.updater['textUpdater'];
+    const fn = this.updater['textUpdater'];
     const value = exp.replace(/\{\{(.+?)\}\}/g, (...args) => {
+      // 给 mustache 匹配到的每个表达式设置观察者对象，数据更新后会更新视图
+      new Watcher(vm, args[1], (newVal) => {
+        // fn(node, newVal);
+        fn(node, this.getContentValue(vm, exp));
+      })
       // 根据表达式获取并返回变量对应的值
       return this.getVal(vm, args[1]);
     });
