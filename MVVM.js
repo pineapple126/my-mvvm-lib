@@ -1,7 +1,7 @@
 /**
  * Watcher & Dep 模块：实现发布订阅功能
  * 
- * 思路：将属性视为被观察者，模板使用视为观察者，实现数据与视图的绑定
+ * 思路：将属性视为被观察者，模板使用视为观察者，实现数据 -> 视图的绑定
  * 
  * 在每个属性的 getter 中收集依赖，在 setter 中通知依赖
  * Dep 类负责存放依赖，Watcher 类负责数据变更后的处理逻辑
@@ -216,6 +216,15 @@ const CompileUtil = {
     }, vm.$data);
   },
 
+  setVal(vm, exp, value) {
+    exp.split('.').reduce((data, current, index, arr) => {
+      if (index === arr.length -  1) { 
+        data[current] = value;
+      }
+      return data[current];
+    }, vm.$data);
+  },
+
   // 遍历表达式，获取最新的完整内容
   getContentValue(vm, exp) {
     return exp.replace(/\{\{(.+?)\}\}/g, (...args) => {
@@ -231,6 +240,11 @@ const CompileUtil = {
     new Watcher(vm, exp, (newVal) => {
       fn(node, newVal);
     });
+    // 为 v-model 指令添加 input 监听事件，当事件触发时修改属性值，实现 视图->数据 的绑定
+    node.addEventListener('input', (e) => {
+      let value = e.target.value;
+      this.setVal(vm, exp, value);
+    })
     const value = this.getVal(vm, exp);
     fn(node, value);
   },
