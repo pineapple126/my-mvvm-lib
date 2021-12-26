@@ -15,6 +15,7 @@
       <li>1</li>
       <li>1</li>
     </ul>
+    <button v-on:click="changeName">更新</button>
   </div>
 
   <script src="./MVVM.js"></script>
@@ -25,6 +26,11 @@
         school: {
           name: "mt",
           age: 11
+        }
+      },
+      methods: {
+        changeName() {
+          this.school.name = "meituan";
         }
       }
     })

@@ -169,9 +169,10 @@ class Compiler {
       if (this.isDirective(name)) {
         // 获取指令名称
         const [, directive] = name.split('-');
-        
+        // 获取事件名称或属性名称
+        const [directiveName, eventName] = directive.split(':');
         // 调用不同的指令规则来处理
-        CompileUtil[directive](node, exp, this.vm);
+        CompileUtil[directiveName](node, exp, this.vm, eventName);
       }
     })
   }
@@ -264,6 +265,14 @@ const CompileUtil = {
     fn(node, value);    
   },
 
+  on(node, exp, vm, eventName) {
+    // const fn = this.updater['onUpdater'];
+    
+    node.addEventListener(eventName, (e) => {
+      vm[exp].call(vm, e);
+    })
+  },
+
   updater: {
     modelUpdater(node, value) {
       node.value = value;
@@ -280,14 +289,23 @@ class MVVM {
   constructor(options) {
     this.$el = options.el;
     this.$data = options.data;
+    let methods = options.methods;
     // 根元素存在 编译模板
     if (this.$el) {
       // 数据劫持  将数据全部转换为使用 Object.defineProperty 定义
       new Observer(this.$data, this);
 
+      // 将 methods 绑定到 vm 实例上
+      for (let key in methods) {
+        Object.defineProperty(this, key, {
+          get() {
+            return methods[key];
+          }
+        })
+      }
+
       // 把数据获取操作 vm 上的取值操作都代理到 vm.$data
       this.proxyVm(this.$data);
-
 
       // 模板编译
       new Compiler(this.$el, this);
@@ -301,10 +319,6 @@ class MVVM {
         get() {
           // 将 vm[key] 代理至 vm.$data[key]
           return data[key];
-        },
-
-        set(val) {
-          data[key] = val;
         }
       })
     }
