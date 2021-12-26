@@ -285,8 +285,28 @@ class MVVM {
       // 数据劫持  将数据全部转换为使用 Object.defineProperty 定义
       new Observer(this.$data, this);
 
+      // 把数据获取操作 vm 上的取值操作都代理到 vm.$data
+      this.proxyVm(this.$data);
+
+
       // 模板编译
       new Compiler(this.$el, this);
+    }
+  }
+
+  // 数据代理 通过 Object.defineProperty 实现 vm.$data 的代理
+  proxyVm(data) {
+    for (let key in data) {
+      Object.defineProperty(this, key, {
+        get() {
+          // 将 vm[key] 代理至 vm.$data[key]
+          return data[key];
+        },
+
+        set(val) {
+          data[key] = val;
+        }
+      })
     }
   }
 }
